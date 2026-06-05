@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AID | AI Image Verifier</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --border: #334155;
+      --radius: 16px;
+    }
+
+    body { 
+      font-family: 'Inter', system-ui, sans-serif; 
+      background-color: var(--bg);
+      color: var(--text-main);
+      max-width: 1100px; 
+      margin: 0 auto; 
+      padding: 40px 20px; 
+      line-height: 1.5;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .header h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin: 0 0 10px 0;
+      background: linear-gradient(135deg, #60a5fa, #34d399);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .header p {
+      color: var(--text-muted);
+      margin: 0;
+      font-size: 1.1rem;
+    }
+
+    .card { 
+      background: var(--card-bg); 
+      border: 1px solid var(--border); 
+      border-radius: var(--radius); 
+      padding: 24px; 
+      margin-bottom: 24px; 
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+    }
+
+    .controls-row { 
+      display: flex; 
+      gap: 16px; 
+      flex-wrap: wrap; 
+      align-items: center; 
+      justify-content: center;
+    }
+
+    /* Стилизация кнопки загрузки файла */
+    input[type="file"] { display: none; }
+    .file-upload-btn {
+      background: var(--accent);
+      color: white;
+      font-weight: 500;
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.2s;
+    }
+    .file-upload-btn:hover { background: var(--accent-hover); }
+
+    .input-control {
+      background: #0f172a;
+      color: var(--text-main);
+      border: 1px solid var(--border);
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.95rem;
+      outline: none;
+    }
+    .input-control:focus { border-color: var(--accent); }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--text-main);
+      border: 1px solid var(--border);
+      padding: 10px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .btn-secondary:hover:not(:disabled) {
+      background: #334155;
+    }
+    .btn-secondary:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .results-grid { 
+      display: grid; 
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); 
+      gap: 24px; 
+    }
+
+    .col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: #0f172a;
+      padding: 20px;
+      border-radius: 12px;
+      border: 1px solid #1e293b;
+    }
+
+    .col h3 { 
+      margin: 0 0 16px 0; 
+      font-size: 1.1rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    canvas { 
+      max-width: 100%; 
+      border-radius: 8px;
+      background: #1e293b; /* Заглушка, если картинки нет */
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+    }
+
+    /* Стили для статусов из app.js */
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    
+    #outImg {
+      margin-bottom: 20px;
+      text-align: center;
+      min-height: 40px;
+      width: 100%;
+    }
+
+    .ok { 
+      background: rgba(16, 185, 129, 0.1); 
+      color: #34d399; 
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      padding: 8px 16px; 
+      border-radius: 8px; 
+      display: inline-block;
+      font-weight: 600;
+    }
+    
+    .bad { 
+      background: rgba(239, 68, 68, 0.1); 
+      color: #f87171; 
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      padding: 8px 16px; 
+      border-radius: 8px; 
+      display: inline-block;
+      font-weight: 600;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+</head>
+<body>
+
+  <div class="header">
+    <h1>AID - AI Image Detector</h1>
+    <p>Информационная система детектирования ИИ-генераций</p>
+  </div>
+
+  <div class="card">
+    <div class="controls-row">
+      <label class="file-upload-btn">
+        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+        Загрузить фото
+        <input id="fileImg" type="file" accept="image/*" />
+      </label>
+
+      <div class="input-control" style="cursor: default; user-select: none; background: rgba(59, 130, 246, 0.1); border-color: var(--accent); color: var(--accent); font-weight: 600;">
+        ⚡ WebGPU Active
+      </div>
+
+      <button id="saveHeatImg" class="btn-secondary" disabled>💾 Скачать Heatmap</button>
+      <button id="saveOverlayImg" class="btn-secondary" disabled>💾 Скачать Overlay</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="results-grid">
+      
+      <div class="col">
+        <h3>Исходное изображение</h3>
+        <canvas id="orig" width="320" height="320"></canvas>
+      </div>
+      
+      <div class="col">
+        <h3>Вердикт сети</h3>
+        <div id="outImg" class="mono" style="color: var(--text-muted);">Ожидание изображения...</div>
+        <h3 style="margin-top: 10px;">Теплокарта (Heatmap)</h3>
+        <canvas id="heat" width="320" height="320"></canvas>
+      </div>
+
+      <div class="col">
+        <h3>Интерпретация (Overlay)</h3>
+        <canvas id="overlay" width="320" height="320"></canvas>
+      </div>
+
+    </div>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
