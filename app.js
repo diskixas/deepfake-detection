@@ -9,6 +9,12 @@ const heat = document.getElementById("heat"); const hctx = heat.getContext("2d")
 const overlay = document.getElementById("overlay"); const ovctx = overlay.getContext("2d");
 const saveHeatImg = document.getElementById("saveHeatImg");
 const saveOverlayImg = document.getElementById("saveOverlayImg");
+const MAX_SIZE = 10 * 1024 * 1024;
+const ALLOWED_TYPES = [
+	"image/jpeg",
+	"image/png",
+	"image/webp"
+];
 
 // state
 let sessionCeleb = null;
@@ -116,10 +122,36 @@ async function forwardCHW(chw, targetSession){
 }
 
 fileImg.addEventListener("change", async (e) => {
-  const f = e.target.files?.[0];
-  if (!f) return;
-  imageBitmap = await createImageBitmap(f);
-  await runOnce();
+
+    const f = e.target.files?.[0];
+
+    if (!f)
+        return;
+
+    if (!ALLOWED_TYPES.includes(f.type)) {
+
+        outImg.innerHTML =
+            '<span class="bad">❌ Допустимы только JPG, JPEG и PNG изображения.</span>';
+
+        fileImg.value = "";
+
+        return;
+    }
+
+    if (f.size > MAX_SIZE) {
+
+        outImg.innerHTML =
+            '<span class="bad">❌ Размер файла превышает 10 МБ.</span>';
+
+        fileImg.value = "";
+
+        return;
+    }
+
+    imageBitmap = await createImageBitmap(f);
+
+    await runOnce();
+
 });
 
 async function runOnce(){
