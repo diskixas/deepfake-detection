@@ -1,6 +1,11 @@
 const sz = 320;
 const infoUrl = "./models/effb4_320.json";
 
+const MODEL_HASHES = {
+  "./models/effb4_320.onnx": "95F7ABCEDC2F10D31ADB3347B85608318FF91E357B9A9D9DDE2228FF54CE9A09",
+  "./models/effb4_ffpp_320.onnx": "0A43DDC42F270AEADA8DB245241F7FA5B555CC382D0A08F0F26F23F31D20B783",
+};
+
 // UI
 const fileImg = document.getElementById("fileImg");
 const outImg = document.getElementById("outImg");
@@ -11,9 +16,9 @@ const saveHeatImg = document.getElementById("saveHeatImg");
 const saveOverlayImg = document.getElementById("saveOverlayImg");
 const MAX_SIZE = 10 * 1024 * 1024;
 const ALLOWED_TYPES = [
-	"image/jpeg",
-	"image/png",
-	"image/webp"
+  "image/jpeg",
+  "image/png",
+  "image/webp"
 ];
 
 // state
@@ -28,14 +33,48 @@ async function loadInfo() {
 }
 loadInfo();
 
+async function sha256FromArrayBuffer(buffer) {
+  const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+}
+
+async function verifyModelHash(modelPath, expectedHash) {
+  const response = await fetch(modelPath, { cache: "no-store" });
+
+  if (!response.ok) {
+    throw new Error(`Не удалось загрузить файл модели: ${modelPath}`);
+  }
+
+  const buffer = await response.arrayBuffer();
+  const actualHash = await sha256FromArrayBuffer(buffer);
+
+  if (actualHash !== expectedHash) {
+    const fileName = modelPath.split("/").pop();
+    throw new Error(
+      `Ошибка безопасности: хэш модели ${fileName} не совпадает. Ожидался ${expectedHash}, получен ${actualHash}.`
+    );
+  }
+}
+
+async function verifyAllModelHashes() {
+  const entries = Object.entries(MODEL_HASHES);
+  for (const [modelPath, expectedHash] of entries) {
+    await verifyModelHash(modelPath, expectedHash);
+  }
+}
+
 function providers(ep) { return ["webgpu", "wasm"]; }
 
 async function ensureSession() {
   if (sessionCeleb && sessionFFPP) return;
-  sessionCeleb = await ort.InferenceSession.create(`./models/effb4_320.onnx`, {
+
+  await verifyAllModelHashes();
+
+  sessionCeleb = await ort.InferenceSession.create("./models/effb4_320.onnx", {
     executionProviders: providers(), graphOptimizationLevel: "all",
   });
-  sessionFFPP = await ort.InferenceSession.create(`./models/effb4_ffpp_320.onnx`, {
+  sessionFFPP = await ort.InferenceSession.create("./models/effb4_ffpp_320.onnx", {
     executionProviders: providers(), graphOptimizationLevel: "all",
   });
 }
@@ -118,40 +157,30 @@ function blendOverlay(baseCtx, heatCtx, outCtx, alpha=0.45){
 
 async function forwardCHW(chw, targetSession){
   const t = new ort.Tensor("float32", chw, [1,3,sz,sz]);
-  return await targetSession.run({ input: t }); 
+  return await targetSession.run({ input: t });
 }
 
 fileImg.addEventListener("change", async (e) => {
+  const f = e.target.files?.[0];
 
-    const f = e.target.files?.[0];
+  if (!f) return;
 
-    if (!f)
-        return;
+  if (!ALLOWED_TYPES.includes(f.type)) {
+    outImg.innerHTML =
+      '<span class="bad">Допустимы только JPG, JPEG, PNG и WEBP изображения.</span>';
+    fileImg.value = "";
+    return;
+  }
 
-    if (!ALLOWED_TYPES.includes(f.type)) {
+  if (f.size > MAX_SIZE) {
+    outImg.innerHTML =
+      '<span class="bad">Размер файла превышает 10 МБ.</span>';
+    fileImg.value = "";
+    return;
+  }
 
-        outImg.innerHTML =
-            '<span class="bad">❌ Допустимы только JPG, JPEG и PNG изображения.</span>';
-
-        fileImg.value = "";
-
-        return;
-    }
-
-    if (f.size > MAX_SIZE) {
-
-        outImg.innerHTML =
-            '<span class="bad">❌ Размер файла превышает 10 МБ.</span>';
-
-        fileImg.value = "";
-
-        return;
-    }
-
-    imageBitmap = await createImageBitmap(f);
-
-    await runOnce();
-
+  imageBitmap = await createImageBitmap(f);
+  await runOnce();
 });
 
 async function runOnce(){
@@ -175,7 +204,7 @@ async function runOnce(){
     const threshold = 0.5;
     const label = ensembleProb >= threshold ? "FAKE" : "REAL";
     const pill = `<span class="pill ${label==='FAKE'?'bad':'ok'}" style="font-size: 1.2rem; padding: 10px 24px;">${label}</span>`;
-    
+
     outImg.innerHTML = `
       <div style="display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; width: 100%;">
         <div style="margin-bottom: 4px;">${pill}</div>
@@ -194,7 +223,7 @@ async function runOnce(){
 
     const feat = out1.feat; const [_, C, Hf, Wf] = feat.dims;
     const arr = feat.data;
-    const K = 32; 
+    const K = 32;
 
     const means = new Float32Array(C);
     for (let c=0;c<C;c++){
@@ -215,7 +244,7 @@ async function runOnce(){
         masked.data[4*i]=r*m; masked.data[4*i+1]=g*m; masked.data[4*i+2]=b*m; masked.data[4*i+3]=255;
       }
       const outM = await forwardCHW(toCHWFloat32(masked, info?.mean, info?.std), sessionCeleb);
-      const p_c = sigmoid(outM.logits.data[0]); 
+      const p_c = sigmoid(outM.logits.data[0]);
       for (let i=0;i<sz*sz;i++) heatAcc[i] += p_c * up[i];
     }
 
@@ -234,6 +263,6 @@ async function runOnce(){
     };
   }catch(e){
     console.error(e);
-    outImg.textContent = "Ошибка: " + e.message;
+    outImg.innerHTML = `<span class="bad">Ошибка: ${e.message}</span>`;
   }
 }
